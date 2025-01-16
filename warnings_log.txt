@@ -1,0 +1,4 @@
+warning on
+% Run your script
+warning off
+diary off

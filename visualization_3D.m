@@ -44,13 +44,19 @@ if ~exist(dicom_dir, 'dir')
 end
 
 % Combine the slices from TE1 and TE2 experiments
-all_slices = cat(3, img_TE1, img_TE2); % Concatenate along the 3rd dimension
+%all_slices = cat(3, img_TE1, img_TE2); % Concatenate along the 3rd dimension
 % Use slices 1 to 14 (TE1)
+%all_slices = cat(3, img_TE1);
 selected_slices = img_TE1;
+ReadoutFOV = twix.hdr.MeasYaps.sSliceArray.asSlice{1}.dReadoutFOV;
+PhaseFOV = twix.hdr.MeasYaps.sSliceArray.asSlice{1}.dPhaseFOV;
+
+NCol = twix.image.dataSize(1);
+NLin = twix.image.dataSize(3);
 
 % Define voxel dimensions (adjust if needed)
-voxel_size_x = 1; % in mm
-voxel_size_y = 1; % in mm
+voxel_size_x = ReadoutFOV/NCol; % in mm
+voxel_size_y = PhaseFOV/NLin; % in mm
 voxel_size_z = sli_thickness; % slice thickness in mm
 
 % Create a DICOM file for each slice
@@ -66,7 +72,7 @@ for slice_idx = 1:num_slices
     metadata.Modality = 'MR';
     metadata.Manufacturer = 'SIEMENS';
     metadata.InstitutionName = 'Tel-Aviv University';
-    metadata.SliceThickness = sli_thickness;
+    metadata.SliceThickness = voxel_size_z;
     metadata.PixelSpacing = [voxel_size_x, voxel_size_y];
     metadata.SliceLocation = slice_idx * voxel_size_z;
     metadata.SeriesDescription = 'Spin Echo MRI';
@@ -88,8 +94,13 @@ for slice_idx = 1:num_slices
 end
 
 % Visualize as a 3D volume
+%[x, y, z] = meshgrid(1:size(selected_slices, 2), 1:size(selected_slices, 1), (1:size(selected_slices, 3)) * voxel_size_z);
+%volumeViewer(selected_slices);
 
-[x, y, z] = meshgrid(1:size(selected_slices, 2), 1:size(selected_slices, 1), (1:size(selected_slices, 3)) * voxel_size_z);
-volumeViewer(selected_slices);
+% Calculate the aspect ratio for rescaling
+aspect_ratio = [voxel_size_y, voxel_size_x, voxel_size_z];
+
+% Visualize as 3D volume with the correct aspect ratio
+volumeViewer(selected_slices, 'ScaleFactors', aspect_ratio);
 
 disp(['DICOM files saved to: ', dicom_dir]);

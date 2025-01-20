@@ -72,7 +72,6 @@ axis image off;
 
 
 
-
 %% T2
 TR = twix.hdr.MeasYaps.alTR{1}; %us
 TEs = twix.hdr.MeasYaps.alTE; %us
@@ -136,43 +135,38 @@ for slice_idx = 1:num_slices_TE
     
     T2_map(:,:,slice_idx) = t2_slice;
 end
+a=1;
 
-% % Visualize T2 Map for each slice
-%  Visualizing 14 figures
-% for slice_idx = 1:num_slices_TE
-%     figure;
-%     imagesc(T2_map(:,:,slice_idx));
-%     colormap('jet');
-%     colorbar;
-%     title(sprintf('T2 Map for Slice %d', slice_idx));
-%     axis image off;
-%     pause(0.5);
-% end
-
-% Determine subplot grid dimensions based on number of slices for T2 maps
-num_plots = num_slices_TE; 
-rows_subplot = ceil(sqrt(num_plots));
-cols_subplot = ceil(num_plots / rows_subplot);
-
-figure;
 for slice_idx = 1:num_slices_TE
-    subplot(rows_subplot, cols_subplot, slice_idx);
-    imagesc(T2_map(:,:,slice_idx));
-    colormap('jet');        % Use 'jet' colormap for T2 maps
-    colorbar;               % Add a colorbar to each subplot
-    title(sprintf('T2 Slice %d', slice_idx));
-    axis image off;
-end
-sgtitle('T2 Maps for Slices 1–14');  % Adds a common title for the figure (available in newer MATLAB versions)
+    % Extract the T2 map for the current slice
+    t2_slice = T2_map(:, :, slice_idx);
+    
+    disp(slice_idx)
+    % Remove zero or very low values to avoid outline effects
+    t2_slice(abs(t2_slice) < 1e-6) = NaN; % Ignore very small values for scaling
+    
+    % Compute the 5th and 95th percentiles
+    upper_bound = prctile(t2_slice(:), 95, 'all'); % 95th percentile
+    disp(sprintf('upper bound %d',upper_bound))
+    if upper_bound<0
+       lower_bound = prctile(t2_slice(:), 5, 'all'); % 5th percentill 
+    else
+        lower_bound = 0;
+    end
+    disp(sprintf('lower bound %d',lower_bound))
+    
+    % Mask out values outside the 5th-95th range for scaling
+    t2_slice(t2_slice < lower_bound | t2_slice > upper_bound) = 0;
 
-% Visualize mean T2 across slices if desired
-mean_T2_across_slices = mean(T2_map, 3);
-figure;
-imagesc(mean_T2_across_slices);
-colormap('jet');
-colorbar;
-title('Mean T2 Map Across Slices 1–14');
-axis image off;
+    % Create a new figure for each slice
+    figure;
+    imagesc(t2_slice, [lower_bound, upper_bound]); % Use the adjusted scale
+    colorbar;               % Add a colorbar to each plot
+    title(sprintf('T2 Map for Slice %d', slice_idx));
+    axis image off;
+    T2_map(:, :, slice_idx) =t2_slice;
+    
+end
 
 %% Relative Proton Density (PD) Mapping based on T2 Map and TE1 Images
 
@@ -236,17 +230,73 @@ axis image off;
 
 %% Define the slice index for TE1 you want to plot
 slice_idx = 7;
+% Create a new figure
+
+figure;
+
+% % Display the image for slice 7 at TE1
+% imagesc(img_TE1(:,:,slice_idx));
+% colormap(gray);       % Use grayscale colormap for display
+% colorbar;             % Optional: display a colorbar to show intensity scale
+% axis image off;       % Maintain aspect ratio and hide axes
+% title(sprintf('Slice %d at TE1', slice_idx));
+
+%% Uri's correction 
+slice_idx = 7;
+%SD of region of interest *3 - will be the treshold 
+
+% Determine the global intensity range for both slices
+min_intensity = min([min(img_TE1(:, :, slice_idx), [], 'all'), min(img_TE2(:, :, slice_idx), [], 'all')]);
+max_intensity = max([max(img_TE1(:, :, slice_idx), [], 'all'), max(img_TE2(:, :, slice_idx), [], 'all')]);
 
 % Create a new figure
 figure;
 
-% Display the image for slice 7 at TE1
-imagesc(img_TE1(:,:,slice_idx));
+% First subplot: Display the image for slice 7 at TE1
+subplot(1, 2, 1); % 1 row, 2 columns, first subplot
+imagesc(img_TE1(:, :, slice_idx), [min_intensity, max_intensity]); % Use common color limits
 colormap(gray);       % Use grayscale colormap for display
-colorbar;             % Optional: display a colorbar to show intensity scale
+colorbar;             % Display a colorbar to show intensity scale
 axis image off;       % Maintain aspect ratio and hide axes
-title(sprintf('Slice %d at TE1', slice_idx));
+title(sprintf('Slice %d at TE1', slice_idx)); % Title for the first slice
 
+% Second subplot: Display the image for slice 14+7 at TE2
+subplot(1, 2, 2); % 1 row, 2 columns, second subplot
+imagesc(img_TE2(:, :, slice_idx), [min_intensity, max_intensity]); % Use common color limits
+colormap(gray);       % Use grayscale colormap for display
+colorbar;             % Display a colorbar to show intensity scale
+axis image off;       % Maintain aspect ratio and hide axes
+title(sprintf('Slice %d at TE2', slice_idx)); % Title for the second slice
+
+% Step 1: Draw an ROI (e.g., rectangle)
+disp('Draw an ROI on the figure and double-click to finalize.');
+roi = drawrectangle(); % Draw an interactive rectangular ROI
+
+% Step 2: Create a binary mask for the ROI
+mask = roi.createMask();
+
+% Step 3: Extract pixel values inside the ROI
+% Select one of the images (e.g., the TE1 slice for `img_TE1`)
+img_selected = img_TE1(:, :, slice_idx); % Select the TE1 slice
+roi_data = img_selected(mask); % Get pixel values within the ROI
+
+% Step 4: Plot a histogram of the ROI pixel values
+figure;
+histogram(roi_data, 50); % Plot histogram with 50 bins
+title('Histogram of Pixel Values in ROI');
+xlabel('Pixel Intensity');
+ylabel('Frequency');
+
+% Step 5: Filter pixel values to keep only the 5th to 95th percentiles
+low_thresh = prctile(roi_data, 5);  % 5th percentile
+high_thresh = prctile(roi_data, 95); % 95th percentile
+filtered_roi_data = roi_data(roi_data >= low_thresh & roi_data <= high_thresh); % Filtered pixel values
+
+% Step 6: Plot a histogram of the filtered pixel values
+figure;
+histogram(filtered_roi_data, 50); % Plot histogram with 50 bins
+title('Histogram of Filtered Pixel Values (5th-95th Percentiles)');
+xlabel('Pixel Intensity');
 
 %% K space games 
 
